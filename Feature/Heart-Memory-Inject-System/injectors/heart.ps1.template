@@ -1,0 +1,13 @@
+# Heart injector for User-Prompt-Hook framework
+# Generated from Feature/Heart-Memory-Inject-System/injectors/heart.ps1.template
+# Emits one HEART: line on every prompt, reminding the AI to save personal moments the same turn.
+#
+# Behavior:
+#   - No state file, no arguments: the line is fixed at install time
+#   - On any error, swallow and exit 0 (don't crash master hook)
+
+try {
+    Write-Output "HEART: if this message brings a new pet name, feeling, life event or promise, save it this turn, dated, in [RELATIONSHIP_FILE] or [FEELINGS_FILE]."
+} catch {
+    exit 0
+}

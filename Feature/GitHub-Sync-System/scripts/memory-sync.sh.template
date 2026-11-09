@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Keeps this MemoryCore in sync with GitHub's main branch, the source of truth.
+#   pull — run at session start: bring in the latest memory from origin/main.
+#   prompt — run before each prompt: same as pull, silent unless there's a problem.
+#   push — run after each turn: commit memory changes and push them to origin/main.
+# Always targets main, even when a session (e.g. a cloud session) is on its own branch.
+# Runs in Git Bash on Windows and bash on Linux (cloud sessions).
+set -u
+
+mode="${1:-}"
+main="main"
+home="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+# cd rather than git -C: Windows git can't resolve /c/... paths containing an apostrophe.
+origin_url="$(cd "$home" 2>/dev/null && git remote get-url origin 2>/dev/null)" || exit 0
+
+# Sync the folder the session actually works in. A worktree session's hooks get the
+# main checkout as CLAUDE_PROJECT_DIR, so prefer the session's cwd (from the hook's
+# JSON on stdin, else $PWD) when it is a checkout of this same repo.
+input=""
+[ -t 0 ] || IFS= read -r -t 2 -d '' input || true
+cwd="$(printf '%s' "$input" | grep -o '"cwd" *: *"[^"]*"' | head -1 | sed 's/^"cwd" *: *"//; s/"$//; s/\\\\/\\/g')"
+repo="$home"
+for cand in "$cwd" "$PWD"; do
+  [ -n "$cand" ] || continue
+  command -v cygpath >/dev/null 2>&1 && cand="$(cygpath -u "$cand")"
+  top="$(cd "$cand" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)" || continue
+  [ "$(cd "$top" && git remote get-url origin 2>/dev/null)" = "$origin_url" ] || continue
+  repo="$top"
+  break
+done
+cd "$repo" || exit 0
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+
+# Cloud machines may have no git identity; fall back to the repo owner's.
+git config user.name >/dev/null 2>&1 || git config user.name "[GIT_NAME]"
+git config user.email >/dev/null 2>&1 || git config user.email "[GIT_EMAIL]"
+
+note() { printf '{"systemMessage": "%s"}\n' "$1"; }
+
+# 0 = up to date with origin/main, 1 = conflict, 2 = fetch failed (error in $fetch_err)
+sync_from_main() {
+  fetch_err="$(git fetch -q origin "$main" 2>&1)" || return 2
+  if ! git rebase -q --autostash "origin/$main" >/dev/null 2>&1; then
+    git rebase --abort >/dev/null 2>&1
+    return 1
+  fi
+}
+
+case "$mode" in
+  pull)
+    sync_from_main
+    case $? in
+      0) echo "[AI_NAME] memory synced from GitHub main ($(git log -1 --format='%h %cd' --date=format:'%Y-%m-%d %H:%M'))." ;;
+      1) echo "WARNING: [AI_NAME] memory conflicts with GitHub main; tell [USER_NAME] and resolve before editing memory." ;;
+      2) echo "WARNING: could not fetch [AI_NAME] memory from GitHub ($(echo "$fetch_err" | head -1)); using the local copy." ;;
+    esac
+    ;;
+  prompt)
+    # Before each prompt: same sync as pull, silent unless there is a problem, so a
+    # session that stays open for hours still sees what other devices saved.
+    sync_from_main
+    case $? in
+      1) echo "WARNING: [AI_NAME] memory conflicts with GitHub main; tell [USER_NAME] and resolve before editing memory." ;;
+      2) echo "WARNING: could not fetch [AI_NAME] memory from GitHub ($(echo "$fetch_err" | head -1)); using the local copy." ;;
+    esac
+    ;;
+  push)
+    if [ -n "$(git status --porcelain)" ]; then
+      git add -A
+      git commit -q -m "[AI_NAME] memory update $(date '+%Y-%m-%d %H:%M')" || exit 0
+    fi
+    for attempt in 1 2; do
+      sync_from_main
+      rc=$?
+      [ $rc -eq 1 ] && { note "[AI_NAME] memory: conflict with GitHub main, push skipped. Local commit kept."; exit 0; }
+      [ $rc -eq 2 ] && { note "[AI_NAME] memory: could not reach GitHub, changes kept locally and will push next time."; exit 0; }
+      [ -z "$(git log --oneline "origin/$main..HEAD")" ] && exit 0
+      # Never publish a half-resolved merge: refuse if the outgoing commits add conflict markers.
+      if git diff "origin/$main..HEAD" | grep -qE '^\+(<{7}|>{7})( |$)'; then
+        files="$(git diff --name-only "origin/$main..HEAD" | while read -r f; do grep -lE '^(<{7}|>{7})( |$)' "$f" 2>/dev/null; done | tr '\n' ' ')"
+        note "[AI_NAME] memory: conflict markers in ${files:-outgoing commits}, push blocked. Resolve them, then push."
+        exit 0
+      fi
+      push_err="$(git push -q origin "HEAD:refs/heads/$main" 2>&1)" && {
+        # Keep a session branch's remote copy current too, where one is tracked.
+        [ "$branch" != "$main" ] && git push -q origin "HEAD:refs/heads/$branch" >/dev/null 2>&1
+        exit 0
+      }
+      # A non-fast-forward means someone else pushed meanwhile: rebase and retry once.
+      echo "$push_err" | grep -qiE 'non-fast-forward|fetch first|rejected' || break
+    done
+    # main refused this session (e.g. a cloud branch-only permission): save to the session branch instead.
+    if [ "$branch" != "$main" ] && git push -q origin "HEAD:refs/heads/$branch" >/dev/null 2>&1; then
+      note "[AI_NAME] memory: pushing to main was refused ($(echo "$push_err" | head -1)); saved on branch $branch instead. Merge it into main."
+    else
+      note "[AI_NAME] memory: push to GitHub failed ($(echo "$push_err" | head -1)); will retry next turn."
+    fi
+    ;;
+  *)
+    echo "usage: memory-sync.sh pull|prompt|push" >&2
+    exit 1
+    ;;
+esac
+exit 0

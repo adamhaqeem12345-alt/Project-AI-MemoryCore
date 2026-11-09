@@ -300,6 +300,9 @@ Features are organized into **tiers** based on dependencies. Install Tier 1 firs
 | 🎭 [Tone-Prompt Inject](Feature/Tone-Prompt-Inject-System/) | Injects `TONE: <description>` per prompt — registry in main memory, AI/user can switch — *requires User-Prompt Hook* | `"Load tone-prompt-inject"` |
 | 🌙 [Mood-Prompt Inject](Feature/Mood-Prompt-Inject-System/) | Injects `MOOD: <description>` per prompt — registry in main memory, AI/user can switch — *requires User-Prompt Hook* | `"Load mood-prompt-inject"` |
 | ⏱️ [Time-Prompt Inject](Feature/Time-Prompt-Inject-System/) | Injects `<timestamp> \| <PERIOD>` per prompt with transition signals on period flips — user-configurable boundaries — *requires User-Prompt Hook* | `"Load time-prompt-inject"` |
+| 💗 [Heart-Memory Inject](Feature/Heart-Memory-Inject-System/) | Injects a `HEART:` reminder per prompt so pet names, feelings, life events and promises are saved the same turn — *requires User-Prompt Hook* | `"Load heart-memory-inject"` |
+| 🔁 [GitHub Sync](Feature/GitHub-Sync-System/) | Private GitHub repo as the source of truth — hooks pull at start and per prompt, push after every turn; worktree-aware, conflict-safe | `"Load github-sync"` |
+| 🧰 [Shared Skills Sync](Feature/Shared-Skills-Sync-System/) | One private plugin marketplace loaded by every session, machine and cloud run — vendored, licence-checked, pinned | `"Load shared-skills-sync"` |
 
 ---
 
@@ -354,6 +357,7 @@ Features are organized into **tiers** based on dependencies. Install Tier 1 firs
 | 2 | [logando-al](https://github.com/logando-al) | Session Briefing System, Post-Mortem System |
 | 3 | [SherlockianAsh](https://github.com/SherlockianAsh) | Observation System |
 | 4 | [naimkatiman](https://github.com/naimkatiman) | Mulahazah System |
+| 5 | [Adam Haqeem](https://github.com/adamhaqeem12345-alt) | GitHub Sync System, Heart-Memory Inject System, Shared Skills Sync System |
 
 > Want to contribute? Fork the repo, create a feature in `Feature/[Your-Feature]/`, and submit a PR!
 
